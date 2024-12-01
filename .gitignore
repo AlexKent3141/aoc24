@@ -1,0 +1,15 @@
+# Setup ignore file so that:
+# * We ignore compiled binaries (no extension)
+# * We ignore our input files (txt extension)
+
+# Ignore everything
+*
+
+# Unignore directories
+!*/
+
+# Unignore files with an extension
+!*.*
+
+# Ignore text files (the input files)
+*.txt
