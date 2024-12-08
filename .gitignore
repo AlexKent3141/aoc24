@@ -13,3 +13,6 @@
 
 # Ignore text files (the input files)
 *.txt
+
+# Ignore compiled C/C++ binaries with the default name.
+*.out
