@@ -40,11 +40,11 @@ shortest_path :: proc(
   start, target: u8,
   grid: Grid($W, $H),
   weights: map[Transition_Key](u64)) -> u64 {
-
   Node :: struct {
     location: int,
     prev_action: u8,
-    dist: u64
+    dist: u64,
+    target_reached: bool
   }
 
   q := priority_queue.Priority_Queue(Node){}
@@ -57,14 +57,22 @@ shortest_path :: proc(
   start_index, _ := slice.linear_search(grid.data[:], start)
   target_index, _ := slice.linear_search(grid.data[:], target)
 
-  priority_queue.push(&q, Node{start_index, 'A', 0})
+  priority_queue.push(&q, Node{start_index, 'A', 0, false})
 
   for priority_queue.len(q) > 0 {
     current := priority_queue.pop(&q)
     assert(grid.data[current.location] != '#')
 
     if grid.data[current.location] == target {
-      return current.dist + weights[make_key(current.prev_action, 'A')]
+      if current.target_reached do return current.dist
+
+      // We need to include the cost of the subsequent 'A' press.
+      priority_queue.push(
+        &q,
+        Node{
+          current.location, 'A', current.dist + weights[make_key(current.prev_action, 'A')], true
+          })
+      continue
     }
 
     // Consider next move.
@@ -72,28 +80,28 @@ shortest_path :: proc(
       priority_queue.push(
         &q,
         Node{
-          current.location + 1, '>', current.dist + weights[make_key(current.prev_action, '>')]
+          current.location + 1, '>', current.dist + weights[make_key(current.prev_action, '>')], false
           })
     }
     if grid.data[current.location - 1] != '#' {
       priority_queue.push(
         &q,
         Node{
-          current.location - 1, '<', current.dist + weights[make_key(current.prev_action, '<')]
+          current.location - 1, '<', current.dist + weights[make_key(current.prev_action, '<')], false
           })
     }
     if grid.data[current.location + W] != '#' {
       priority_queue.push(
         &q,
         Node{
-          current.location + W, 'v', current.dist + weights[make_key(current.prev_action, 'v')]
+          current.location + W, 'v', current.dist + weights[make_key(current.prev_action, 'v')], false
           })
     }
     if grid.data[current.location - W] != '#' {
       priority_queue.push(
         &q,
         Node{
-          current.location - W, '^', current.dist + weights[make_key(current.prev_action, '^')]
+          current.location - W, '^', current.dist + weights[make_key(current.prev_action, '^')], false
           })
     }
   }
