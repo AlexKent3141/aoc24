@@ -2,35 +2,46 @@ package d22
 
 import "core:container/queue"
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
 
 // Next PRNG step.
 step :: proc(n: u64) -> u64 {
+  K :: 16777216
+
   n := n
 
-  // 1
-  n ~= (n * 64)
-  n %= 16777216
+  n ~= n << 6
+  n %= K
 
-  // 2
-  n ~= (n / 32)
-  n %= 16777216
+  n ~= n >> 5
+  n %= K
 
-  // 3 
-  n ~= (n * 2048)
-  n %= 16777216
+  n ~= n << 11
+  n %= K
 
   return n
 }
 
-solve :: proc(s, d1, d2, d3, d4: int) -> (int, bool) {
+ComboKey :: distinct int
+
+make_key :: proc(d1, d2, d3, d4: int) -> ComboKey {
+  return ComboKey(
+    (d1 + 10) +
+    (d2 + 10) << 4 +
+    (d3 + 10) << 8 +
+    (d4 + 10) << 12
+  )
+}
+
+solve_seed :: proc(s: u64, results: ^map[ComboKey](int)) {
   q := queue.Queue(int){}
   queue.init(&q)
   defer queue.destroy(&q)
 
-  prev := step(u64(s))
+  prev := step(s)
   for _ in 1..<1999 {
     next := step(prev)
     defer prev = next
@@ -42,14 +53,19 @@ solve :: proc(s, d1, d2, d3, d4: int) -> (int, bool) {
     assert(queue.len(q) <= 4)
 
     if queue.len(q) == 4 {
-      if queue.get(&q, 0) == d1 && queue.get(&q, 1) == d2 &&
-         queue.get(&q, 2) == d3 && queue.get(&q, 3) == d4 {
-        return int(next % 10), true
-      }
+      // Update the cache with this new occurrence.
+      key := make_key(
+        queue.get(&q, 0),
+        queue.get(&q, 1),
+        queue.get(&q, 2),
+        queue.get(&q, 3)
+      ) 
+
+      if key in results^ do continue
+
+      results^[key] += int(next % 10)
     }
   }
-
-  return 0, false
 }
 
 main :: proc() {
@@ -57,47 +73,33 @@ main :: proc() {
   defer delete(data)
   s := string(data)
 
-  seeds := make([dynamic]u64)
-  defer delete(seeds)
+  cache := make(map[ComboKey](int))
+  defer delete(cache)
 
-  for line in strings.split_lines_iterator(&s) {
-    n := u64(strconv.atoi(line))
-    append(&seeds, n)
-  }
+  seed_cache := make(map[ComboKey](int))
+  defer delete(seed_cache)
 
   p1 := u64(0)
-  for s in seeds {
-    s := s
-    for _ in 0..<2000 do s = step(s)
-    p1 += s
+
+  for line in strings.split_lines_iterator(&s) {
+    seed := u64(strconv.atoi(line))
+
+    next := seed
+    for _ in 0..<2000 do next = step(next)
+    p1 += next
+
+    clear(&seed_cache)
+
+    solve_seed(seed, &seed_cache)
+
+    for k, v in seed_cache do cache[k] += v
   }
 
-  fmt.println("P1:", p1)
-
-  // Brute-force: iterate all possible sequences of four price changes and see how
-  // many bananas we would get across all seeds.
-
-  // Each price can go from -9..9 inclusive.
-  p2 := -100000000
-  for d1 in -9..=9 {
-    fmt.println("Considering:", d1)
-    for d2 in -9..=9 {
-      for d3 in -9..=9 {
-        for d4 in -9..=9 {
-          total := 0
-          for s in seeds {
-            bananas, found := solve(int(s), d1, d2, d3, d4)
-            if found do total += bananas
-          }
-
-          if total > p2 {
-            p2 = total
-            fmt.println("New best:", d1, d2, d3, d4, total)
-          }
-        }
-      }
-    }
+  // Find the largest cache entry.
+  p2 := 0
+  for _, v in cache {
+    p2 = math.max(p2, v)
   }
 
-  fmt.println("P2:", p2)
+  fmt.println("P1:", p1, "P2:", p2)
 }
