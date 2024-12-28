@@ -10,16 +10,22 @@ import "core:strings"
 // on two other wires.
 Wire :: struct {
   name: string,
-  input1, input2: Maybe(string),
+  id: int,
+  input1, input2: Maybe(int),
   op: Maybe(string),
   val: Maybe(bool)
 }
 
+name_to_id :: proc(s: string) -> int {
+  assert(len(s) == 3)
+  return int(s[0]) << 16 + int(s[1]) << 8 + int(s[2])
+}
+
 // Recursively solve for the specified wire, reusing results where possible.
-solve :: proc(name: string, wires: ^map[string](Wire), depth: int = 0) -> (bool, bool) {
+solve :: proc(id: int, wires: ^[]Wire, depth: int = 0) -> (bool, bool) {
   if depth > 100 do return false, true
 
-  target := &wires[name]
+  target := &wires[id]
   if target^.val != nil {
     return target^.val.?, false
   }
@@ -31,15 +37,15 @@ solve :: proc(name: string, wires: ^map[string](Wire), depth: int = 0) -> (bool,
   v2, has_cycle2 := solve(target^.input2.?, wires, depth + 1)
   if has_cycle2 do return false, true
 
-  if target^.op == "OR" {
+  if target^.op.?[0] == 'O' {
     target^.val = v1 || v2
   }
-  else if target^.op == "AND" {
+  else if target^.op.?[0] == 'A' {
     target^.val = v1 && v2
   }
-  else if target^.op == "XOR" {
+  else if target^.op.?[0] == 'X' {
     v1 ~= v2
-    target^.val =  v1
+    target^.val = v1
   }
 
   return target^.val.?, false
@@ -50,7 +56,7 @@ main :: proc() {
   defer delete(data)
   s := string(data)
 
-  wires := make(map[string]Wire)
+  wires := make([]Wire, 1 << 25)
   defer delete(wires)
 
   parsing_initial_inputs := true
@@ -65,8 +71,9 @@ main :: proc() {
       name := line[0:3]
       val := line[5] == '1' ? true : false
 
-      assert(name not_in wires)
-      wires[name] = Wire{name = name, val = val}
+      id := name_to_id(name)
+      assert(wires[id].id == 0)
+      wires[id] = Wire{name = name, id = id, val = val}
     }
     else {
       // Binary op.
@@ -78,8 +85,9 @@ main :: proc() {
       op := tokens[1]
       output := tokens[4]
 
-      assert(output not_in wires)
-      wires[output] = Wire{name = output, input1 = input1, input2 = input2, op = op}
+      id := name_to_id(output)
+      assert(wires[id].id == 0)
+      wires[id] = Wire{name = output, id = id, input1 = name_to_id(input1), input2 = name_to_id(input2), op = op}
     }
   }
 
@@ -96,7 +104,8 @@ main :: proc() {
   swappable := make([dynamic]^Wire)
   defer delete(swappable)
 
-  for _, &w in wires {
+  for &w in wires {
+    if w.id == 0 do continue
     if w.name[0] == 'x' {
       x_input[strconv.atoi(w.name[1:])] = &w
     }
@@ -111,11 +120,11 @@ main :: proc() {
     }
   }
 
-  get_output :: proc(output_wires: []^Wire, wires: ^map[string](Wire)) -> (u64, bool) {
+  get_output :: proc(output_wires: []^Wire, wires: ^[]Wire) -> (u64, bool) {
     out := u64(0)
     bit := u64(1)
     for w in output_wires {
-      on, has_cycle := solve(w^.name, wires)
+      on, has_cycle := solve(w^.id, wires)
       if has_cycle do return 0, true
       if on {
         out |= bit
@@ -129,8 +138,8 @@ main :: proc() {
 
   fmt.println("P1:", get_output(z_output, &wires))
 
-  clear_wires :: proc(wires: ^map[string](Wire)) {
-    for _, &w in wires do w.val = nil
+  clear_wires :: proc(wires: []^Wire) {
+    for &w in wires do w.val = nil
   }
 
   write_value :: proc(val: u64, input_wires: []^Wire) {
@@ -204,14 +213,14 @@ main :: proc() {
 
       // Collect stats for number of correct bits.
       av_bit_diff := 0.0
-      N :: 1000
+      N :: 100
       has_cycle := false
       for _ in 0..<N {
-        v1 := rand.uint64() >> 20
-        v2 := rand.uint64() >> 20
+        v1 := rand.uint64() >> 21
+        v2 := rand.uint64() >> 21
         res := v1 + v2
 
-        clear_wires(&wires)
+        clear_wires(swappable[:])
 
         write_value(v1, x_input)
         write_value(v2, y_input)
